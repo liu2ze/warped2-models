@@ -10,7 +10,7 @@
 #include "ppm/ppm.hpp"
 #include "tclap/ValueArg.h"
 
-#define TS_INTERVAL 1 
+#define TS_INTERVAL 1
 
 WARPED_REGISTER_POLYMORPHIC_SERIALIZABLE_CLASS(MessageEvent)
 
@@ -64,6 +64,19 @@ int main(int argc, const char **argv) {
     unsigned int grid_size = 1000;
     unsigned int grid_order = 4;
 
+    // run time arguments
+    static int opt_mem = 3000;
+    static long mpi_message_size = 32;
+    static int num_mpi_msgs = 50;
+    static int mem_factor = 16;
+    static double MEAN_INTERVAL=200.0;
+    static int TRAFFIC = UNIFORM_RANDOM;
+    static int injection_limit = 10;
+    static double injection_interval = 20000;
+    static int vc_size = 16384;
+    static double link_bandwidth = 2.0;
+    static char traffic_str[512] = "uniform";
+
     /* Read arguments */
     TCLAP::ValueArg<unsigned int> grid_dimension_arg("d", "dimension",
                     "Dimensionality of the torus", false, grid_dimension, "unsigned int");
@@ -72,9 +85,9 @@ int main(int argc, const char **argv) {
     TCLAP::ValueArg<unsigned int> grid_order_arg("o", "order",
                     "Order of nodes in torus", false, grid_order, "unsigned int");
 
-    std::vector<TCLAP::Arg*> cmd_line_args = {   &grid_dimension_arg, 
-                                                 &grid_size_arg, 
-                                                 &grid_order_arg 
+    std::vector<TCLAP::Arg*> cmd_line_args = {   &grid_dimension_arg,
+                                                 &grid_size_arg,
+                                                 &grid_order_arg
                                              };
 
     warped::Simulation simulation {"Torus Network Simulation", argc, argv, cmd_line_args};
@@ -102,4 +115,3 @@ int main(int argc, const char **argv) {
 
     return 0;
 }
-
