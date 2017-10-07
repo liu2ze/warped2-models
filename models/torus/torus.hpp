@@ -39,13 +39,12 @@ enum message_event_t {
 
 WARPED_DEFINE_LP_STATE_STRUCT(NodeState) {
     unsigned int packet_counter;
-    unsigned int next_link_available_ts[2 * grid_dimension_][NUM_VC]; // Time when the VC will be available for sending packets on this node
-    unsigned int next_credit_available_ts[2 * grid_dimension_][NUM_VC]; // Time when the next VC will be available for sending credits on this node
-    unsigned int buffer[2 * grid_dimension_][NUM_VC]; // Buffer occupancy of the current VC
-    unsigned int dim_position[grid_dimension_]; // torus dimension coordinates of this node
-    // unsigned int dim_position_sim[grid_dimension_sim]; // torus dimension coordinates of the simulated torus dimension by this node (For TOPC paper)
-    unsigned int neighbour_minus_lpID[grid_dimension_]; // torus neighbor coordinates for this node
-    unsigned int neighbour_plus_lpID[grid_dimension_]; // torus plus neighbor coordinates for this node, **removed simulated neighbor coordinates
+    unsigned int next_link_available_ts[][]; // Time when the VC will be available for sending packets on this node
+    unsigned int next_credit_available_ts[][]; // Time when the next VC will be available for sending credits on this node
+    unsigned int buffer[][]; // Buffer occupancy of the current VC
+    unsigned int dim_position[]; // torus dimension coordinates of this node
+    unsigned int neighbor_minus_index[]; // torus neighbor coordinates for this node
+    unsigned int neighbor_plus_index[]; // torus plus neighbor coordinates for this node, **removed simulated neighbor coordinates
     unsigned int source_dim;
     unsigned int direction;
     struct waiting_packet *waiting_list; // first element of linked list
@@ -113,6 +112,19 @@ public:
         grid_order_(grid_order),
         dimension_index_(dimension_index),
         index_(index) {
+
+        state_.packet_counter;
+        state_.next_link_available_ts = new unsigned int[2 * grid_dimension_][NUM_VC];
+        state_.next_credit_available_ts = new unsigned int[2 * grid_dimension_][NUM_VC];
+        state_.buffer = new unsigned int[2 * grid_dimension_][NUM_VC];
+        state_.dim_position = new unsigned int[grid_dimension_];
+        state_.neighbor_minus_index = new unsigned int[grid_dimension_];
+        state_.neighbor_plus_index = new unsigned int[grid_dimension_];
+        state_.source_dim;
+        state_.direction;
+        state_.waiting_list; // first element of linked list
+        state_.read;
+        state_.wait_count;
     }
 
     virtual warped::LPState& getState() { return state_; }
@@ -120,8 +132,8 @@ public:
     virtual vector<shared_ptr<warped::Event> > receiveEvent(const warped::Event&);
 
     NodeState state_;
-    unsigned int grid_dimension_; // N_dims
-    // unsigned int grid_dimension_sim;
+
+    unsigned int grid_dimension_; // N_dims, removed simulation dimensions
     unsigned int grid_size_;
     unsigned int grid_order_;
     unsigned int dimension_index_;
@@ -130,14 +142,13 @@ public:
     unsigned int num_chunks;
     unsigned int packet_offset = 0;
     unsigned int num_buf_slots;
-    // unsigned int node_rem = 0; // for ROSS mapping purposes
     unsigned int factor[grid_dimension_]; // for calculating torus dimensions
     // unsigned int factor_sim[grid_dimension_sim];
     float head_delay = 0.0; // calculating delays using the link bandwidth
     float credit_delay = 0.0;
 
 protected:
-    unsigned int neighbor(unsigned int index, unsigned int destination);
+    unsigned int route(unsigned int destination_index, unsigned int source_index, unsigned int direction);
 };
 
 #endif

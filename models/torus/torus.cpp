@@ -73,63 +73,47 @@ std::vector<std::shared_ptr<warped::Event> > Node::receiveEvent(const warped::Ev
     return events;
 }
 
-unsigned int Node::neighbor(unsigned int destination_index,
-                            unsigned int source_index,
-                            unsigned int direction) {
+unsigned int Node::route(unsigned int destination_index,
+                         unsigned int source_index,
+                         unsigned int direction) {
     // direction depends on the order of the torus
-
     // check the shortest path based on destination
-
     // dimension order routing
-
     // return a new index
-    // return 1;
-
     // get node from indices
-    Node destiation;
+    Node destination;
     Node source;
-
-    int dim_N[ grid_dimension ],
-    dest[ grid_dimension ],
-    i;
-
-    dim_N[0] = *destination;
+    int dimensions[grid_dimension];
+    int dest[ grid_dimension ];
+    dimensions[0] = *destination;
 
     // find destination dimensions using destination LP ID
-    for ( i = 0; i < grid_dimension; i++ ) {
-        dest[ i ] = dim_N[ i ] % dim_length[ i ];
-        dim_N[ i + 1 ] = ( dim_N[ i ] - dest[ i ] ) / dim_length[ i ];
+    for (int i = 0; i < grid_dimension; i++ ) {
+        dest[i] = dimensions[i] % dim_length[i];
+        dimensions[i + 1] = (dimensions[i] - dest[i]) / dim_length[i];
     }
 
-    for( i = 0; i < grid_dimension; i++ ) {
-        if ( state->dim_position[ i ] - dest[ i ] > half_length[ i ] )  {
-            *destination = state->neighbour_plus_lpID[ i ];
+    for(int i = 0; i < grid_dimension; i++ ) {
+        if (state_->dim_position[i] - dest[i] > half_length[i])  {
+            *destination = state_->neighbour_plus_lpID[i];
             *dim = i;
             *direction = 1;
-            break;
-        }
-
-        if ( state->dim_position[ i ] - dest[ i ] < -half_length[ i ] ) {
-            *destination = state->neighbour_minus_lpID[ i ];
+        } else if (state_->dim_position[i] - dest[i] < -half_length[i]) {
+            *destination = state_->neighbor_plus_index[i];
             *dim = i;
             *direction = 0;
-            break;
-        }
-
-        if ( ( state->dim_position[ i ] - dest[ i ] <= half_length[ i ] ) && ( state->dim_position[ i ] - dest[ i ] > 0 ) ) {
-            *destination = state->neighbour_minus_lpID[ i ];
+        } else if ((state_->dim_position[i] - dest[i] <= half_length[i]) && (state_->dim_position[i] - dest[i] > 0 )) {
+            *destination = state_->neighbor_plus_index[i];
             *dim = i;
             *direction = 0;
-            break;
-        }
-
-        if (( state->dim_position[ i ] - dest[ i ] >= -half_length[ i ] ) && ( state->dim_position[ i ] - dest[ i ] < 0) ) {
-            *destination = state->neighbour_plus_lpID[ i ];
+        } else if ((state_->dim_position[i] - dest[i] >= -half_length[i]) && (state_->dim_position[i] - dest[i] < 0)) {
+            *destination = state_->neighbor_plus_index[i];
             *dim = i;
             *direction = 1;
-            break;
         }
     }
+
+    return 1;
 }
 
 int main(int argc, const char **argv) {
@@ -139,11 +123,8 @@ int main(int argc, const char **argv) {
     unsigned int grid_dimension = 5;
     unsigned int grid_size = 1000;  // configurable per dimension in ROSS
     unsigned int grid_order = 4;
-
     // ROSS sets opt_memory, mpi_message_size, mem_factor, num_mpi_msgs
-
     // add parameter for different routing algorithms
-
     /* Read arguments */
     TCLAP::ValueArg<unsigned int> grid_dimension_arg("d", "dimension",
                     "Dimensionality of the torus", false, grid_dimension, "unsigned int");
@@ -199,8 +180,8 @@ int main(int argc, const char **argv) {
     // nlp_nodes_per_pe = N_nodes/tw_nnodes()/g_tw_npe; ??
     unsigned int rows = sqrt(N_nodes);
     unsigned int cols = rows;
-    // total lps
-    // node_rem
+    // total_lps
+    // node_rem - ROSS mapping
     num_packets = 1;
     num_chunks = PACKET_SIZE / chunk_size;
 //    g_tw_mapping=CUSTOM;
@@ -233,20 +214,20 @@ int main(int argc, const char **argv) {
 
         // calculate +/- 1 neighbor's LP index
 
-//        temp_dim_plus_pos[ j ] = (state->dim_position[ j ] + 1 + dim_length[ j ]) % dim_length[ j ];
-//        temp_dim_minus_pos[ j ] =  (state->dim_position[ j ] - 1 + dim_length[ j ]) % dim_length[ j ];
+//        temp_dim_plus_pos[j] = (state->dim_position[j] + 1 + dim_length[j]) % dim_length[j];
+//        temp_dim_minus_pos[j] =  (state->dim_position[j] - 1 + dim_length[j]) % dim_length[j];
 //
-//        state->neighbour_minus_lpID[ j ] = 0;
-//        state->neighbour_plus_lpID[ j ] = 0;
+//        state->neighbour_minus_lpID[j] = 0;
+//        state->neighbour_plus_lpID[j] = 0;
 //
 //        for ( i = 0; i < N_dims; i++ )
 //        {
-//            state->neighbour_minus_lpID[ j ] += factor[ i ] * temp_dim_minus_pos[ i ];
-//            state->neighbour_plus_lpID[ j ] += factor[ i ] * temp_dim_plus_pos[ i ];
+//            state->neighbour_minus_lpID[j] += factor[i] * temp_dim_minus_pos[i];
+//            state->neighbour_plus_lpID[j] += factor[i] * temp_dim_plus_pos[i];
 //        }
 //
-//        temp_dim_plus_pos[ j ] = state->dim_position[ j ];
-//        temp_dim_minus_pos[ j ] = state->dim_position[ j ];
+//        temp_dim_plus_pos[j] = state->dim_position[j];
+//        temp_dim_minus_pos[j] = state->dim_position[j];
     }
 
     // initialize lps
@@ -254,8 +235,8 @@ int main(int argc, const char **argv) {
 //    {
 //        for( i = 0; i < NUM_VC; i++ )
 //        {
-//            state->buffer[ j ][ i ] = 0;
-//            state->next_link_available_time[ j ][ i ] = 0.0;
+//            state->buffer[j][i] = 0;
+//            state->next_link_available_time[j][i] = 0.0;
 //        }
 //    }
 //    // record LP time
