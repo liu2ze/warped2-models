@@ -56,7 +56,7 @@ WARPED_DEFINE_LP_STATE_STRUCT(NodeState) {
 struct waiting_packet {
     unsigned int dim;
     unsigned int dir;
-    nodes_message *packet;
+    MessageEvent *packet;
     struct waiting_packet *next;
 };
 
@@ -64,8 +64,10 @@ class MessageEvent : public warped::Event {
 public:
     MessageEvent() = default;
     MessageEvent( const std::string receiver_name,
+                  const message_event_t type,
                   unsigned int event_ts  )
         :   receiver_name_(receiver_name),
+            type_(type),
             event_ts_(event_ts) {}
 
     const std::string& receiverName() const { return receiver_name_; }
@@ -75,14 +77,19 @@ public:
     }
 
     std::string receiver_name_;
+    message_event_t type_;
     unsigned int hop_count_; // my_N_hop
     unsigned int event_ts_;
 
     // unsigned int chunk_id; // chunk ID of the packet
-    nodes_event_t type; // event time: mpi_send, mpi_recv, packet_generate etc.
-    unsigned int source_dim; // originating torus node dimension and direction
+    // event time: mpi_send, mpi_recv, packet_generate etc.
+    unsigned int source_dimension; // originating torus node dimension and direction
     unsigned int source_direction;
+    unsigned int source_index;
     unsigned int destination[grid_dimension_]; // destination torus coordinates for this packet/message
+    unsigned int destination_dimension;
+    unsigned int destination_direction;
+    unsigned int destination_index;
     unsigned int next_stop; // tw_lpid next stop of this message/packet
     unsigned int packet_ID;
     unsigned int packet_size; // size in bytes
@@ -100,13 +107,15 @@ public:
 class Node : public warped::LogicalProcess {
 public:
     Node( const std::string& name,
-          unsigned int grid_dimension,
-          unsigned int grid_size,
-          unsigned int grid_order,
-          unsigned int dimension_index,
-          unsigned int index )
+          const unsigned int mean_interval,
+          const unsigned int grid_dimension,
+          const unsigned int grid_size,
+          const unsigned int grid_order,
+          const unsigned int dimension_index,
+          const unsigned int index )
       : LogicalProcess(name),
         state_(),
+        mean_interval_(mean_interval),
         grid_dimension_(grid_dimension),
         grid_size_(grid_size),
         grid_order_(grid_order),
@@ -128,26 +137,27 @@ public:
     }
 
     virtual warped::LPState& getState() { return state_; }
-    virtual vector<shared_ptr<warped::Event> > initializeLP() override;
-    virtual vector<shared_ptr<warped::Event> > receiveEvent(const warped::Event&);
+    virtual std::vector<std::shared_ptr<warped::Event>> initializeLP() override;
+    virtual std::vector<std::shared_ptr<warped::Event>> receiveEvent(const warped::Event&);
 
     NodeState state_;
 
-    unsigned int grid_dimension_; // N_dims, removed simulation dimensions
-    unsigned int grid_size_;
-    unsigned int grid_order_;
-    unsigned int dimension_index_;
-    unsigned int index_;
-    unsigned int num_packets; // ROSS globals
-    unsigned int num_chunks;
+    // N_dims, removed simulation dimensions
+//    unsigned int num_packets; // ROSS globals
+//    unsigned int num_chunks;
     unsigned int packet_offset = 0;
     unsigned int num_buf_slots;
-    unsigned int factor[grid_dimension_]; // for calculating torus dimensions
-    // unsigned int factor_sim[grid_dimension_sim];
+    unsigned int factor[grid_dimension_]; // for calculating torus dimensions // unsigned int factor_sim[grid_dimension_sim];
     float head_delay = 0.0; // calculating delays using the link bandwidth
     float credit_delay = 0.0;
 
 protected:
+    const unsigned int mean_interval_;
+    const unsigned int grid_dimension_;
+    const unsigned int grid_size_;
+    const unsigned int grid_order_;
+    const unsigned int dimension_index_;
+    const unsigned int index_;
     unsigned int route(unsigned int destination_index, unsigned int source_index, unsigned int direction);
 };
 

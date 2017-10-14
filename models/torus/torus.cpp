@@ -21,7 +21,22 @@ std::string node_name (unsigned int index) {
 std::vector<std::shared_ptr<warped::Event> > Node::initializeLP() {
     std::vector<std::shared_ptr<warped::Event>> events;
 
-    events.emplace_back( new MessageEvent { node_name(thistate->index_), TS_INTERVAL } );
+    // for uniform random routing
+
+//    this->registerRNG(this->rng_);
+//    std::exponential_distribution<double> interval_expo(1.0 / this->mean_interval_);
+//    std::uniform_int_distribution<unsigned int> random_direction(*this->rng); // random direction
+//    auto packet_arrival = (direction_t) random_direction(*this->rng);
+//
+//    // this doesn't work, needs to be configurable for dimensionality
+//    std::uniform_int_distribution<int> random_x(-99,100);
+//    std::uniform_int_distribution<int> random_y(-99,100);
+//    std::uniform_int_distribution<int> random_z(-99,100);
+//
+//    for (unsigned int i = 0; i < this->total_nodes; i++) {
+//        // new MessageEvent(name, arrival, random_x(rng_), random_y(rng_), packet_arrival, (unsigned int) std::ceil(interval_expo(*this->rng_)));
+//        events.emplace_back(new MessageEvent {});
+//    }
 
     return events;
 }
@@ -30,23 +45,36 @@ std::vector<std::shared_ptr<warped::Event> > Node::receiveEvent(const warped::Ev
     std::vector<std::shared_ptr<warped::Event>> events;
     auto message_event = static_cast<const MessageEvent&>(event);
     unsigned int event_ts = message_event.event_ts_ + TS_INTERVAL;
-
     message_event.hop_count_++;
 
     // check that a message has reached it's destination
-    if (message_event.receiver_name_ == node_name(thistate->index_)) {
-        events.emplace_back(new MessageEvent { node_name(thistate->index_), event_ts });
+    if (message_event.receiver_name_ == node_name(index_)) {
+//        events.emplace_back(new MessageEvent { node_name(index_), event_ts });
     } else {
         // else, forward on
-        events.emplace_back(new MessageEvent { node_name(neighbor(thistate->index_, message_event.destination)), event_ts });
+//        events.emplace_back(new MessageEvent { node_name(neighbor(index_, message_event.destination)), event_ts });
     }
 
-    // while there is an event available?
-    switch (thistate->type_) {
-      case GENERATE: {
+    // wait queue?
 
+    switch (message_event.type_) {
+      case GENERATE: {
+          // state, bf - buffer?, message, lp
+          int destination = message_event.destination_index;
+          int grid_dimension = grid_dimension_;
+
+          if(destination < grid_dimension) {
+            message_event.destination_index = state_.neighbor_minus_index[destination];
+          } else if(destination >= grid_dimension && destination < 2 * grid_dimension) {
+            message_event.destination_index = state_.neighbor_minus_index[destination - grid_dimension];
+          }
         } break;
       case ARRIVAL: {
+
+          // traffic
+          // switch on current lane
+              // increment counter in state
+              // set [event type], emplace back with new variables, [event type], new x and y, timestamp, arrival from
 
         } break;
       case SEND: {
@@ -69,22 +97,20 @@ std::vector<std::shared_ptr<warped::Event> > Node::receiveEvent(const warped::Ev
         } break;
     }
 
-
     return events;
 }
 
-unsigned int Node::route(unsigned int destination_index,
-                         unsigned int source_index,
-                         unsigned int direction) {
+// unsigned int Node::route(MessageEvent *message) {
+unsigned int Node::route(unsigned int destination_index, unsigned int source_index, unsigned int direction) {
     // direction depends on the order of the torus
     // check the shortest path based on destination
     // dimension order routing
     // return a new index
     // get node from indices
-    Node destination;
-    Node source;
+    Node destination;  // NPE
+    Node source;  // NPE
     int dimensions[grid_dimension];
-    int dest[ grid_dimension ];
+    int dest[grid_dimension];
     dimensions[0] = *destination;
 
     // find destination dimensions using destination LP ID
@@ -95,21 +121,21 @@ unsigned int Node::route(unsigned int destination_index,
 
     for(int i = 0; i < grid_dimension; i++ ) {
         if (state_->dim_position[i] - dest[i] > half_length[i])  {
-            *destination = state_->neighbour_plus_lpID[i];
-            *dim = i;
-            *direction = 1;
+            message->destination_index = state_->neighbor_minus_index[i];
+            message->destination_dimension = i;
+            message->destination_direction = 1;
         } else if (state_->dim_position[i] - dest[i] < -half_length[i]) {
-            *destination = state_->neighbor_plus_index[i];
-            *dim = i;
-            *direction = 0;
+            message->destination_index = state_->neighbor_minus_index[i];
+            message->destination_dimension = i;
+            message->destination_direction = 0;
         } else if ((state_->dim_position[i] - dest[i] <= half_length[i]) && (state_->dim_position[i] - dest[i] > 0 )) {
-            *destination = state_->neighbor_plus_index[i];
-            *dim = i;
-            *direction = 0;
+            message->destination_index = state_->neighbor_minus_index[i];
+            message->destination_dimension = i;
+            message->destination_direction = 0;
         } else if ((state_->dim_position[i] - dest[i] >= -half_length[i]) && (state_->dim_position[i] - dest[i] < 0)) {
-            *destination = state_->neighbor_plus_index[i];
-            *dim = i;
-            *direction = 1;
+            message->destination_index = state_->neighbor_minus_index[i];
+            message->destination_dimension = i;
+            message->destination_direction = 1;
         }
     }
 
@@ -123,6 +149,7 @@ int main(int argc, const char **argv) {
     unsigned int grid_dimension = 5;
     unsigned int grid_size = 1000;  // configurable per dimension in ROSS
     unsigned int grid_order = 4;
+    unsigned int mean_interval = 200;
     // ROSS sets opt_memory, mpi_message_size, mem_factor, num_mpi_msgs
     // add parameter for different routing algorithms
     /* Read arguments */
@@ -132,19 +159,22 @@ int main(int argc, const char **argv) {
                     "Size of the torus grid", false, grid_size, "unsigned int");
     TCLAP::ValueArg<unsigned int> grid_order_arg("o", "order",
                     "Order of nodes in torus", false, grid_order, "unsigned int");
+    TCLAP::ValueArg<unsigned int> mean_interval_arg("i", "mean-interval",
+                    "Mean interval", false, mean_interval, "unsigned int");
 
-    std::vector<TCLAP::Arg*> cmd_line_args = {   &grid_dimension_arg,
-                                                 &grid_size_arg,
-                                                 &grid_order_arg
+    std::vector<TCLAP::Arg*> cmd_line_args = { &grid_dimension_arg,
+                                               &grid_size_arg,
+                                               &grid_order_arg,
+                                               &mean_interval_arg
                                              };
 
     warped::Simulation simulation {"Torus Network Simulation", argc, argv, cmd_line_args};
 
     grid_dimension = grid_dimension_arg.getValue();
-    grid_size = grid_size_arg.getValue();
-    grid_order = grid_order_arg.getValue();
+    grid_size      = grid_size_arg.getValue();
+    grid_order     = grid_order_arg.getValue();
+    mean_interval  = mean_interval_arg.getValue();
 
-    unsigned int MEAN_INTERVAL = 200;
     unsigned int injection_limit = 10;
     unsigned int injection_interval = 20000;
     unsigned int vc_size = 16384;
@@ -177,13 +207,13 @@ int main(int argc, const char **argv) {
     std::vector<warped::LogicalProcess*> lp_pointers;
 
     unsigned int nodes = grid_dimension * grid_size;
-    // nlp_nodes_per_pe = N_nodes/tw_nnodes()/g_tw_npe; ??
-    unsigned int rows = sqrt(N_nodes);
+    // nlp_nodes_per_pe = total_nodes/tw_nnodes()/g_tw_npe; ??
+    unsigned int rows = sqrt(total_nodes);  // need to track total nodes
     unsigned int cols = rows;
     // total_lps
     // node_rem - ROSS mapping
-    num_packets = 1;
-    num_chunks = PACKET_SIZE / chunk_size;
+    unsigned int num_packets = 1;
+    unsigned int num_chunks = PACKET_SIZE / chunk_size;
 //    g_tw_mapping=CUSTOM;
 //    g_tw_custom_initial_mapping=&torus_mapping;
 //    g_tw_custom_lp_global_to_local_map=&torus_mapping_to_lp;
@@ -191,8 +221,27 @@ int main(int argc, const char **argv) {
     // create dimensions array, and initialize to each LP
     unsigned int dimension_coordinates[grid_dimension];  // +1
 
+    /* Torus is a grid of size n with k dimensions */
+    for (unsigned int k = 0; k < grid_dimension; k++) {
+        for (unsigned int n = 0; n < grid_size; n++) {
+            lps.emplace_back(
+                    node_name(n),
+                    grid_dimension,
+                    grid_size,
+                    grid_order,
+                    mean_interval,
+                    k,
+                    n
+            );
+        }
+    }
+
+    for (auto& lp : lps) {
+        lp_pointers.push_back(&lp);
+    }
+
     // have to separate initialization steps
-    for (int i = 0; i < grid_dimension; i++) {
+    for (unsigned int i = 0; i < grid_dimension; i++) {
         // initialize each to lp->gid ??
 
         // find each LP's coordinates
@@ -203,7 +252,7 @@ int main(int argc, const char **argv) {
         // half_length = length / 2;
 
         // initialize "factor" to calculate neighbors
-        unsigned int factor[] = 1;
+        unsigned int factor[];
         // factor [dimension[ = 1, for j<dimension, factor *= size;
 
         // calculate dimension neighbors
@@ -214,60 +263,49 @@ int main(int argc, const char **argv) {
 
         // calculate +/- 1 neighbor's LP index
 
-//        temp_dim_plus_pos[j] = (state->dim_position[j] + 1 + dim_length[j]) % dim_length[j];
-//        temp_dim_minus_pos[j] =  (state->dim_position[j] - 1 + dim_length[j]) % dim_length[j];
+        //        temp_dim_plus_pos[j] = (state_->dim_position[j] + 1 + dim_length[j]) % dim_length[j];
+//        temp_dim_minus_pos[j] =  (state_->dim_position[j] - 1 + dim_length[j]) % dim_length[j];
 //
-//        state->neighbour_minus_lpID[j] = 0;
-//        state->neighbour_plus_lpID[j] = 0;
+//        state_->neighbour_minus_lpID[j] = 0;
+//        state_->neighbour_plus_lpID[j] = 0;
 //
-//        for ( i = 0; i < N_dims; i++ )
+//        for ( i = 0; i < grid_dimension; i++ )
 //        {
-//            state->neighbour_minus_lpID[j] += factor[i] * temp_dim_minus_pos[i];
-//            state->neighbour_plus_lpID[j] += factor[i] * temp_dim_plus_pos[i];
+//            state_->neighbour_minus_lpID[j] += factor[i] * temp_dim_minus_pos[i];
+//            state_->neighbour_plus_lpID[j] += factor[i] * temp_dim_plus_pos[i];
 //        }
 //
-//        temp_dim_plus_pos[j] = state->dim_position[j];
-//        temp_dim_minus_pos[j] = state->dim_position[j];
+//        temp_dim_plus_pos[j] = state_->dim_position[j];
+//        temp_dim_minus_pos[j] = state_->dim_position[j];
     }
 
-    // initialize lps
-//    for( j=0; j < 2 * N_dims; j++ )
+// initialize lps
+//    for( j=0; j < 2 * grid_dimension; j++ )
 //    {
 //        for( i = 0; i < NUM_VC; i++ )
 //        {
-//            state->buffer[j][i] = 0;
-//            state->next_link_available_time[j][i] = 0.0;
+//            state_->buffer[j][i] = 0;
+//            state_->next_link_available_time[j][i] = 0.0;
 //        }
 //    }
 //    // record LP time
-//    state->packet_counter = 0;
-//    state->waiting_list = tw_calloc(TW_LOC, "waiting list", sizeof(struct waiting_packet), WAITING_PACK_COUNT);
+//    state_->packet_counter = 0;
+//    state_->waiting_list = tw_calloc(TW_LOC, "waiting list", sizeof(struct waiting_packet), WAITING_PACK_COUNT);
 //
 //    for (j = 0; j < WAITING_PACK_COUNT - 1; j++) {
-//        state->waiting_list[j].next = &state->waiting_list[j + 1];
-//        state->waiting_list[j].dim = -1;
-//        state->waiting_list[j].dir = -1;
-//        state->waiting_list[j].packet = NULL;
+//        state_->waiting_list[j].next = &state_->waiting_list[j + 1];
+//        state_->waiting_list[j].dim = -1;
+//        state_->waiting_list[j].dir = -1;
+//        state_->waiting_list[j].packet = NULL;
 //    }
 //
-//    state->waiting_list[j].next = NULL;
-//    state->waiting_list[j].dim = -1;
-//    state->waiting_list[j].dir = -1;
-//    state->waiting_list[j].packet = NULL;
+//    state_->waiting_list[j].next = NULL;
+//    state_->waiting_list[j].dim = -1;
+//    state_->waiting_list[j].dir = -1;
+//    state_->waiting_list[j].packet = NULL;
 //
-//    state->head = &state->waiting_list[0];
-//    state->wait_count = 0;
-
-    /* Torus is a grid of size n with k dimensions */
-//    for (unsigned int k = 0; k < grid_dimension; k++) {
-//        for (unsigned int n = 0; n < grid_size; n++) {
-//            lps.emplace_back(node_name(n), grid_dimension, grid_size, grid_order, k, n);
-//        }
-//    }
-//
-//    for (auto& lp : lps) {
-//        lp_pointers.push_back(&lp);
-//    }
+//    state_->head = &state_->waiting_list[0];
+//    state_->wait_count = 0;
 
     simulation.simulate(lp_pointers);
 
